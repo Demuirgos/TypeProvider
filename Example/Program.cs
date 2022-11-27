@@ -6,21 +6,24 @@ internal class Program
             ""bool_Val"" : true, 
             ""num_Val"" : 23.69, 
             ""obj_Val"" : {
-                ""nested_Field"" : ""23""
+                ""nested_Field"" : ""23"",
+                ""obj_Val"" : {
+                    ""nesteField"" : ""23""
+                }, 
             }, 
             ""arr_Val"" : [23, 69], 
             ""arr_obj_Val"" : [
                 {
-                    ""nested_Field"" : ""23""
+                    ""nested_Field"" : ""236""
                 }
             ] 
     }";
 
-    [EmitType("./FileSample.json")] private static string SampleType2 { get; }
+    [EmitType(".\\FileSample.json")] private static string SampleType2 { get; }
 
     private static void Main(string[] args)
     {
         SampleType1 test = JsonSerializer.Deserialize<SampleType1>(SampleType1);
-        Console.WriteLine(test.num_Val);
+        Console.WriteLine(test.obj_Val.nested_Field);
     }
 }

@@ -39,13 +39,20 @@ public static class ToolExtensions {
 }
 public class TypeInstantiator
 {
-    public static string EmitForm(IEnumerable<(string type, string name)> props)
+    public string EmitForm(IEnumerable<(string type, string name)> props, bool IsTarget = false)
     {
         var sb = new StringBuilder();
         sb.Append("{\n");
+        if (IsTarget)
+        {
+            foreach(var typedef in type_impl)
+            {
+                sb.Append(TypeTemplate("public", typedef.Key, typedef.Value, "record", 1));
+            }
+        }
         foreach (var prop in props)
         {
-            sb.Append($"    public {prop.type} {prop.name} {{ get; set; }}\n");
+            sb.Append($"\tpublic {prop.type} {prop.name} {{ get; set; }}\n");
         }
         sb.Append("}\n");
         return sb.ToString();
@@ -53,14 +60,20 @@ public class TypeInstantiator
     public static string FileTemplate(string fileBody)
         => $"using System;\nnamespace TypeExtensions.Generated;\n\n{fileBody}";
 
-    public static string TypeTemplate(string scope, string typename, String body, string typekind)
-        => $"{scope} {typekind} {typename} {body}\n";
+    public static string TypeTemplate(string scope, string typename, String body, string typekind, int nesting = 0)
+    {
+        string prefix = new string('\t', nesting);
+        body = body.Replace("\n", $"\n{prefix}");
+        return $"{prefix}{scope} {typekind} {typename} {body}\n";
+    }
 
     private int i = 0;
-    private Dictionary<int, List<(string, string)>> emmited_types = new();
+    private Dictionary<int, string> emmited_types = new(); // hashform => typename
+    private HashSet<string> reserved_types = new();
+    private Dictionary<string, string> type_impl = new(); // typename => codeform
     string GetObjectType(JsonElement.ObjectEnumerator obj, string name, bool properType = false)
     {
-        string typename(int i) => name ?? $"__GeneratedType__{i}";
+        string typename(string name, int i) => $"{name}{i}";
         List<(string type, string name)> properties = new();
         foreach (var node in obj)
         {
@@ -69,29 +82,29 @@ public class TypeInstantiator
             properties.Add((prop_type, prop_name));
         }
 
-        var recordForm = EmitForm(properties);
+        var recordForm = EmitForm(properties, properType);
         if(properType)
         {
-            if(emmited_types.ContainsKey(0))
-            {
-                emmited_types.TryGetValue(0, out var types);
-                types.Add((name, recordForm));
-
-            } else
-            {
-                emmited_types.Add(0, new List<(string, string)> { (name, recordForm) });
-            }
+            emmited_types.Add(0, name);
+            type_impl.Add(name, recordForm);
             return name;
         } else
         {
             var hashedForm = recordForm.GetHashCode();
-            if (emmited_types.TryGetValue(hashedForm, out var metadata))
+            if(emmited_types.TryGetValue(hashedForm, out var tname))
             {
-                return metadata.Last().Item1;
-            }
-            else
+                return tname;
+            } else
             {
-                emmited_types.Add(hashedForm, new List<(string, string)>{ (name, recordForm) });
+
+                while (reserved_types.Contains(name))
+                {
+                    name = typename(name, ++i);
+                }
+
+                reserved_types.Add(name);
+                emmited_types[hashedForm] = name;
+                type_impl[name] = recordForm;
                 return name;
             }
         }
@@ -157,18 +170,11 @@ public class TypeInstantiator
         }
     }
 
-    public string EmitTypes()
+    public string EmitTypes(string name)
     {
         StringBuilder sb = new StringBuilder();
-        foreach (var types in emmited_types)
-        {
-            foreach(var type in types.Value)
-            {
-                bool isRoot = type.Item1.Contains("__GeneratedType__");
-                var type_code = TypeTemplate("public" /*isRoot ? "file" : "public"*/, type.Item1, type.Item2, "record");
-                sb.Append(type_code);
-            }
-        }
+        var type_code = TypeTemplate("public" /*isRoot ? "file" : "public"*/, name, type_impl[name], "record");
+        sb.Append(type_code);
         return FileTemplate(sb.ToString());
     }
 }
@@ -221,16 +227,16 @@ public class TypesGenerator : ISourceGenerator
     }
     public void Execute(GeneratorExecutionContext context)
     {
-        var engine = new TypeInstantiator();
         try
         {
             var allSamples = GetAllMarkedProperties(context.Compilation);
             foreach (var (name, sample) in allSamples)
             {
+                var engine = new TypeInstantiator();
                 engine.GenerateTypes(name, sample);
+                context.AddSource($"{name}.Type.g.cs", SourceText.From(engine.EmitTypes(name), Encoding.UTF8));
             }
 
-            context.AddSource("EmitedTypes.g.cs", SourceText.From(engine.EmitTypes(), Encoding.UTF8));
         }
         catch (Exception ex){
             context.ReportDiagnostic(Diagnostic.Create(ToolExtensions.Rule(ex), Location.None));
