@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Text;
 using System.Linq;
 using System.Diagnostics;
@@ -8,6 +9,13 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using System.Text.Json;
+
+public static class StringExt {
+        public static string ToPascal(this string Identifier) 
+            =>  CultureInfo.CurrentCulture
+                            .TextInfo
+                            .ToTitleCase(Identifier.ToLower().Replace("_", " ")).Replace(" ", string.Empty);
+} 
 public class TypeInstantiator
 {
     string emitForm(IEnumerable<(string type, string name)> props)
@@ -29,14 +37,14 @@ public class TypeInstantiator
 
     private int i = 0;
     private Dictionary<int, (string, string)> emmited_types = new();
-    string GetObjectType(JsonElement.ObjectEnumerator obj, string name = null)
+    string GetObjectType(JsonElement.ObjectEnumerator obj, string name)
     {
         string typename(int i) => name ?? $"__GeneratedType__{i}";
         List<(string type, string name)> properties = new();
         foreach (var node in obj)
         {
             var prop_name = node.Name;
-            var prop_type = GetPropertyKind(node.Value);
+            var prop_type = GetPropertyKind(node.Value, $"{prop_name.ToPascal()}_T");
             properties.Add((prop_type, prop_name));
         }
 
@@ -54,17 +62,17 @@ public class TypeInstantiator
         }
     }
 
-    string GetPropertyKind(JsonElement values)
+    string GetPropertyKind(JsonElement values, string name)
     {
         return values.ValueKind switch
         {
-            JsonValueKind.Array => GetEnumerableType(values.EnumerateArray()),
-            JsonValueKind.Object => GetObjectType(values.EnumerateObject()),
+            JsonValueKind.Array => GetEnumerableType(values.EnumerateArray(), name),
+            JsonValueKind.Object => GetObjectType(values.EnumerateObject(), name),
             _ => GetValueType(values.ValueKind)
         };
     }
 
-    string GetEnumerableType(JsonElement.ArrayEnumerator values)
+    string GetEnumerableType(JsonElement.ArrayEnumerator values, string name)
     {
         JsonElement? first = values.FirstOrDefault();
 
@@ -75,13 +83,13 @@ public class TypeInstantiator
 
         try
         {
-            return $"{GetEnumerableType(first.Value.EnumerateArray())}[]";
+            return $"{GetEnumerableType(first.Value.EnumerateArray(), name)}[]";
         }
         catch
         {
             try
             {
-                return $"{GetObjectType(first.Value.EnumerateObject())}[]";
+                return $"{GetObjectType(first.Value.EnumerateObject(), name)}[]";
             }
             catch
             {

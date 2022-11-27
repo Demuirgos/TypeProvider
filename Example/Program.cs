@@ -8,9 +8,9 @@ internal class Program
         SampleType test = new SampleType();
         test.boolVal = true;
         test.numVal = 23.69M;
-        test.objVal = new __GeneratedType__1
+        test.objVal = new Objval_T
         {
-            nestedField = "23"
+            nestedField = "12"
         };
     }
 }
