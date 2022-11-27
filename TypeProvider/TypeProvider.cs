@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using System.Text.Json;
 using System.Data;
+using System.IO;
 
 public class InvalidPropertyType : Exception { }
 public class InvalidPropertyAccess : Exception { }
@@ -38,7 +39,7 @@ public static class ToolExtensions {
 }
 public class TypeInstantiator
 {
-    string emitForm(IEnumerable<(string type, string name)> props)
+    public static string EmitForm(IEnumerable<(string type, string name)> props)
     {
         var sb = new StringBuilder();
         sb.Append("{\n");
@@ -49,15 +50,15 @@ public class TypeInstantiator
         sb.Append("}\n");
         return sb.ToString();
     }
-    private string FileTemplate(string fileBody)
+    public static string FileTemplate(string fileBody)
         => $"using System;\nnamespace TypeExtensions.Generated;\n\n{fileBody}";
 
-    private string TypeTemplate(string scope, string typename, String body, string typekind)
+    public static string TypeTemplate(string scope, string typename, String body, string typekind)
         => $"{scope} {typekind} {typename} {body}\n";
 
     private int i = 0;
-    private Dictionary<int, (string, string)> emmited_types = new();
-    string GetObjectType(JsonElement.ObjectEnumerator obj, string name)
+    private Dictionary<int, List<(string, string)>> emmited_types = new();
+    string GetObjectType(JsonElement.ObjectEnumerator obj, string name, bool properType = false)
     {
         string typename(int i) => name ?? $"__GeneratedType__{i}";
         List<(string type, string name)> properties = new();
@@ -68,17 +69,31 @@ public class TypeInstantiator
             properties.Add((prop_type, prop_name));
         }
 
-        var recordForm = emitForm(properties);
-        var hashedForm = recordForm.GetHashCode();
-        if (emmited_types.TryGetValue(hashedForm, out var metadata))
+        var recordForm = EmitForm(properties);
+        if(properType)
         {
-            return metadata.Item1;
-        }
-        else
+            if(emmited_types.ContainsKey(0))
+            {
+                emmited_types.TryGetValue(0, out var types);
+                types.Add((name, recordForm));
+
+            } else
+            {
+                emmited_types.Add(0, new List<(string, string)> { (name, recordForm) });
+            }
+            return name;
+        } else
         {
-            var type_name = typename(++i);
-            emmited_types.Add(hashedForm, (type_name, recordForm));
-            return type_name;
+            var hashedForm = recordForm.GetHashCode();
+            if (emmited_types.TryGetValue(hashedForm, out var metadata))
+            {
+                return metadata.Last().Item1;
+            }
+            else
+            {
+                emmited_types.Add(hashedForm, new List<(string, string)>{ (name, recordForm) });
+                return name;
+            }
         }
     }
 
@@ -129,24 +144,32 @@ public class TypeInstantiator
 
         };
     }
-    public string EmitType(string name, string sample, bool isRecord = false)
+
+    public void GenerateTypes(string name, string sample, bool isRecord = false)
     {
         try
         {
             JsonDocument tree = JsonDocument.Parse(sample, new JsonDocumentOptions() { AllowTrailingCommas = true });
-            var typename = GetObjectType(tree.RootElement.EnumerateObject(), name);
-            StringBuilder sb = new StringBuilder();
-            foreach (var type in emmited_types)
-            {
-                bool isRoot = type.Value.Item1.Contains("__GeneratedType__");
-                var type_code = TypeTemplate("public" /*isRoot ? "file" : "public"*/, type.Value.Item1, type.Value.Item2, "record");
-                sb.Append(type_code);
-            }
-            return FileTemplate(sb.ToString());
-        } catch {
+            _ = GetObjectType(tree.RootElement.EnumerateObject(), name, properType: true);
+        } catch
+        {
             throw new InvalidPropertyValue();
         }
-        
+    }
+
+    public string EmitTypes()
+    {
+        StringBuilder sb = new StringBuilder();
+        foreach (var types in emmited_types)
+        {
+            foreach(var type in types.Value)
+            {
+                bool isRoot = type.Item1.Contains("__GeneratedType__");
+                var type_code = TypeTemplate("public" /*isRoot ? "file" : "public"*/, type.Item1, type.Item2, "record");
+                sb.Append(type_code);
+            }
+        }
+        return FileTemplate(sb.ToString());
     }
 }
 
@@ -182,7 +205,16 @@ public class TypesGenerator : ISourceGenerator
                     }).Select(attr =>
                     {
                         var typename = propDef.Identifier.Value.ToString();
-                        var typesample = semanticModel.GetConstantValue(propDef.Initializer.Value).ToString();
+                        bool fromFile = attr.ArgumentList?.Arguments.Count > 0;
+                        string typesample;
+                        if (fromFile)
+                        {
+                            var path = semanticModel.GetConstantValue(attr.ArgumentList.Arguments.Single().Expression).ToString();
+                            typesample = File.ReadAllText(path);
+                        } else
+                        {
+                            typesample = semanticModel.GetConstantValue(propDef.Initializer.Value).ToString();
+                        }
                         return (typename, typesample);
                     });
             }).ToArray();
@@ -193,12 +225,12 @@ public class TypesGenerator : ISourceGenerator
         try
         {
             var allSamples = GetAllMarkedProperties(context.Compilation);
-            var sb = new StringBuilder();
             foreach (var (name, sample) in allSamples)
             {
-                sb.Append(engine.EmitType(name, sample));
+                engine.GenerateTypes(name, sample);
             }
-            context.AddSource("EmitedTypes.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
+
+            context.AddSource("EmitedTypes.g.cs", SourceText.From(engine.EmitTypes(), Encoding.UTF8));
         }
         catch (Exception ex){
             context.ReportDiagnostic(Diagnostic.Create(ToolExtensions.Rule(ex), Location.None));
@@ -208,5 +240,11 @@ public class TypesGenerator : ISourceGenerator
 
     public void Initialize(GeneratorInitializationContext context)
     {
+#if DEBUG
+        // if (!Debugger.IsAttached)
+        // {
+        //     Debugger.Launch();
+        // }
+#endif 
     }
 }

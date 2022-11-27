@@ -1,0 +1,13 @@
+{ 
+    "bool_Val" : true, 
+    "num_Val" : 23.69, 
+    "obj_Val" : {
+        "nestedField" : "23"
+    }, 
+    "arr_Val" : [23, 69], 
+    "arr_obj_Val" : [
+        {
+            "nestedField" : "23"
+        }
+    ] 
+}
