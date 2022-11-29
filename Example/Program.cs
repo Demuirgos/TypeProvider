@@ -2,28 +2,40 @@
 using TypeExtensions.Generated;
 internal class Program
 {
-    [EmitType] private static string SampleType1 { get; } = @"{ 
-            ""bool_Val"" : true, 
-            ""num_Val"" : 23.69, 
-            ""obj_Val"" : {
-                ""nested_Field"" : ""23"",
-                ""obj_Val"" : {
-                    ""nesteField"" : ""23""
-                }, 
-            }, 
-            ""arr_Val"" : [23, 69], 
-            ""arr_obj_Val"" : [
+    [EmitType] private static string PersonOfInterest { get; } = @"{ 
+            ""Name"" : ""John Doe"", 
+            ""Age"" : 23, 
+            ""Projects"" : [
                 {
-                    ""nested_Field"" : ""236""
+                    ""Title"" : ""Project UNO"",
+                    ""Value"" : {
+                        ""Estimated"" : ""23"",
+                        ""Actual"" : ""7""
+                    }
+                },
+                {
+                    ""Title"" : ""Project DOS"",
+                    ""Value"" : {
+                        ""Estimated"" : ""69"",
+                        ""Actual"" : ""123""
+                    }
                 }
-            ] 
+            ], 
+            ""Keys"" : [23, 69, 123], 
+            ""CurrentProject"" :{
+                ""Title"" : ""Project TRES"",
+                ""Value"" : {
+                    ""Estimated"" : ""7"",
+                    ""Actual"" : ""5""
+                }
+            }
     }";
 
-    [EmitType(".\\FileSample.json")] private static string SampleType2 { get; }
+    [EmitType("D:\\Projects\\TypeProvider\\TypeProvider.Json\\FileSample.json")] private static string SampleType2 { get; }
 
     private static void Main(string[] args)
     {
-        SampleType1 test = JsonSerializer.Deserialize<SampleType1>(SampleType1);
-        Console.WriteLine(test.obj_Val.nested_Field);
+        var JohnDoe = JsonSerializer.Deserialize<PersonOfInterest>(PersonOfInterest);
+        Console.WriteLine(JohnDoe);
     }
 }

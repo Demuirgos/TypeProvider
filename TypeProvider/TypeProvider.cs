@@ -12,9 +12,15 @@ using System.Text.Json;
 using System.Data;
 using System.IO;
 
-public class InvalidPropertyType : Exception { }
-public class InvalidPropertyAccess : Exception { }
-public class InvalidPropertyValue : Exception { }
+public class InvalidPropertyType : Exception {
+    public InvalidPropertyType() : base($"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)") { }
+}
+public class InvalidPropertyAccess : Exception {
+    public InvalidPropertyAccess() : base($"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)") { }
+}
+public class InvalidPropertyValue : Exception {
+    public InvalidPropertyValue() : base($"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)") { }
+}
 
 public static class ToolExtensions {
     public static string ToPascal(this string Identifier) 
@@ -29,12 +35,7 @@ public static class ToolExtensions {
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: "Property Type Emission must be : Readonly, a string and private static",
-        messageFormat: ex switch
-        {
-            InvalidPropertyType _ => $"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)",
-            InvalidPropertyValue _ => $"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)",
-            InvalidPropertyAccess _ => $"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)",
-        });
+        messageFormat: ex.Message);
 
 }
 public class TypeInstantiator
@@ -69,7 +70,6 @@ public class TypeInstantiator
 
     private int i = 0;
     private Dictionary<int, string> emmited_types = new(); // hashform => typename
-    private HashSet<string> reserved_types = new();
     private Dictionary<string, string> type_impl = new(); // typename => codeform
     string GetObjectType(JsonElement.ObjectEnumerator obj, string name, bool properType = false)
     {
@@ -97,12 +97,11 @@ public class TypeInstantiator
             } else
             {
 
-                while (reserved_types.Contains(name))
+                while (type_impl.ContainsKey(name))
                 {
                     name = typename(name, ++i);
                 }
 
-                reserved_types.Add(name);
                 emmited_types[hashedForm] = name;
                 type_impl[name] = recordForm;
                 return name;
