@@ -1,6 +1,7 @@
 ﻿using System;
-using System.Globalization;
 using System.Text;
+using System.Globalization;
+using System.Xml;
 using System.Linq;
 using System.Diagnostics;
 using System.Collections.Generic;
@@ -71,30 +72,24 @@ public class TypeInstantiator
     private int i = 0;
     private Dictionary<int, string> emmited_types = new(); // hashform => typename
     private Dictionary<string, string> type_impl = new(); // typename => codeform
-    string GetObjectType(JsonElement.ObjectEnumerator obj, string name, bool properType = false)
+    string AddTypeToEmitionTargets(ref string name, bool properType, List<(string type, string name)> properties)
     {
         string typename(string name, int i) => $"{name}{i}";
-        List<(string type, string name)> properties = new();
-        foreach (var node in obj)
-        {
-            var prop_name = node.Name;
-            var prop_type = GetPropertyKind(node.Value, $"{prop_name.ToPascal()}_T");
-            properties.Add((prop_type, prop_name));
-        }
-
         var recordForm = EmitForm(properties, properType);
-        if(properType)
+        if (properType)
         {
             emmited_types.Add(0, name);
             type_impl.Add(name, recordForm);
             return name;
-        } else
+        }
+        else
         {
             var hashedForm = recordForm.GetHashCode();
-            if(emmited_types.TryGetValue(hashedForm, out var tname))
+            if (emmited_types.TryGetValue(hashedForm, out var tname))
             {
                 return tname;
-            } else
+            }
+            else
             {
 
                 while (type_impl.ContainsKey(name))
@@ -108,62 +103,102 @@ public class TypeInstantiator
             }
         }
     }
-
-    string GetPropertyKind(JsonElement values, string name)
+    string GetObjectType(XmlNode obj, string name, bool properType = false)
     {
-        return values.ValueKind switch
+        List<(string type, string name)> properties = new();
+        foreach (XmlNode node in obj.ChildNodes)
         {
-            JsonValueKind.Array => GetEnumerableType(values.EnumerateArray(), name),
-            JsonValueKind.Object => GetObjectType(values.EnumerateObject(), name),
-            _ => GetValueType(values.ValueKind)
-        };
-    }
-
-    string GetEnumerableType(JsonElement.ArrayEnumerator values, string name)
-    {
-        JsonElement? first = values.FirstOrDefault();
-
-        if (first == null)
-        {
-            return $"Object[]";
+            var prop_name = node.Name;
+            var prop_type = GetPropertyKind(node, $"{prop_name.ToPascal()}_T");
+            properties.Add((prop_type, prop_name));
         }
-
-        try
+        if (obj.Attributes is not null)
         {
-            return $"{GetEnumerableType(first.Value.EnumerateArray(), name)}[]";
-        }
-        catch
-        {
-            try
+            foreach (XmlAttribute node in obj.Attributes)
             {
-                return $"{GetObjectType(first.Value.EnumerateObject(), name)}[]";
-            }
-            catch
-            {
-                return $"{GetValueType(first.Value.ValueKind)}[]";
+                var prop_name = node.Name;
+                var prop_type = GetValueType(node.InnerText);
+                properties.Add((prop_type, prop_name));
             }
         }
+
+        return AddTypeToEmitionTargets(ref name, properType, properties);
     }
 
-    string GetValueType(JsonValueKind kind)
+    string GetPropertyKind(XmlNode value, string name)
     {
-        return kind switch
-        {
-            JsonValueKind.Number => typeof(Decimal).Name,
-            JsonValueKind.String => typeof(String).Name,
-            JsonValueKind.Null or JsonValueKind.Undefined => typeof(Object).Name,
-            JsonValueKind.False or JsonValueKind.True => typeof(bool).Name,
+        bool isValue(XmlNode node) => node.ChildNodes.Count == 0 && node.Attributes.Count == 0;
+        if (isValue(value)) {
+            return "Object?";
+        }else {
+            if (value.ChildNodes.Count == 1)
+            {
+                XmlNode first = value.ChildNodes.Item(0);
+                if(first.NodeType == XmlNodeType.Text)
+                {
+                    return GetValueType(value.InnerText);
+                } 
+            }
 
-        };
+            if (value.ChildNodes.Count > 1)
+                {
+                bool isList = true;
+                XmlElement first = (XmlElement)value.ChildNodes.Item(0);
+                foreach(XmlElement child in value.ChildNodes) {
+                    isList &=
+                            child.ChildNodes.Count == first.ChildNodes.Count &&
+                            child.Attributes.Count == first.Attributes.Count && 
+                            child.Name == first.Name;
+                }
+
+                if(isList) {
+                    var mainType = GetEnumerableType(value, $"{first.Name}_T");
+                    if (value.Attributes.Count == 0)
+                        return mainType;
+                    List<(string type, string name)> properties = new();
+                    properties.Add((mainType, first.Name));
+                    if (value.Attributes is not null)
+                    {
+                        foreach (XmlAttribute node in value.Attributes)
+                        {
+                            var prop_name = node.Name;
+                            var prop_type = GetValueType(node.InnerText);
+                            properties.Add((prop_type, prop_name));
+                        }
+                    }
+                    AddTypeToEmitionTargets(ref name, false, properties);
+                    return name;
+                }        
+            }
+            return GetObjectType(value, $"{value.Name}_T");
+        }
+    }
+
+    string GetEnumerableType(XmlNode values, string name)
+    {
+        XmlElement first = (XmlElement)values.ChildNodes.Item(1);
+        return $"{GetPropertyKind(first, name)}[]";
+    }
+
+    string GetValueType(string kind)
+    {
+        if(Decimal.TryParse(kind, out _)) {
+            return nameof(Decimal);
+        } else if(Boolean.TryParse(kind, out _)) {
+            return nameof(Boolean);
+        } else if(String.IsNullOrEmpty(kind)) {
+            return nameof(Object);
+        } else return nameof(String);
     }
 
     public void GenerateTypes(string name, string sample, bool isRecord = false)
     {
         try
         {
-            JsonDocument tree = JsonDocument.Parse(sample, new JsonDocumentOptions() { AllowTrailingCommas = true });
-            _ = GetObjectType(tree.RootElement.EnumerateObject(), name, properType: true);
-        } catch
+            XmlDocument tree = new XmlDocument();
+            tree.LoadXml(sample);
+            _ = GetObjectType(tree, name, properType: true);
+        } catch (Exception ex)
         {
             throw new InvalidPropertyValue();
         }
@@ -246,10 +281,10 @@ public class TypesGenerator : ISourceGenerator
     public void Initialize(GeneratorInitializationContext context)
     {
 #if DEBUG
-        // if (!Debugger.IsAttached)
-        // {
-        //     Debugger.Launch();
-        // }
+         // if (!Debugger.IsAttached)
+         // {
+         //     Debugger.Launch();
+         // }
 #endif 
     }
 }

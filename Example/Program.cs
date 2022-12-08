@@ -1,9 +1,9 @@
-﻿using System.Text.Json;
+﻿using System.Xml;
 using TypeExtensions.Generated;
 internal class Program
 {
-    [EmitType] private static string PersonOfInterest { get; } = @"{ 
-            ""Name"" : ""John Doe"", 
+    /*
+     ""Name"" : ""John Doe"", 
             ""Age"" : 23, 
             ""Projects"" : [
                 {
@@ -28,14 +28,34 @@ internal class Program
                     ""Estimated"" : ""7"",
                     ""Actual"" : ""5""
                 }
-            }
-    }";
-
-    [EmitType("D:\\Projects\\TypeProvider\\TypeProvider.Json\\FileSample.json")] private static string SampleType2 { get; }
+            }*/
+    [EmitType] private static string PersonOfInterest { get; } = @"
+            <PersonOfInterest Name=""John Doe"" Age=""23"">
+                <Projects test=""testing"">    
+                    <Project Title=""Project UNO"">    
+                        <Value Estimated=""23"" Actual=""7""/>
+                    </Project>
+                    <Project Title=""Project DOS"">    
+                        <Value Estimated=""69"" Actual=""123""/>
+                    </Project>
+                    <Project Title=""Project MINU"">    
+                        <Value Estimated=""69"" Actual=""123""/>
+                    </Project>
+                </Projects>
+                <Keys> 
+                    <Key>23 </Key>
+                    <Key>69 </Key>
+                    <Key>123</Key>
+                </Keys>
+                <CurrentProject>
+                    <Project Title=""Project DOS"">    
+                        <Value Estimated=""69"" Actual=""123""/>
+                    </Project>
+                </CurrentProject>
+            </PersonOfInterest>";
 
     private static void Main(string[] args)
     {
-        var JohnDoe = JsonSerializer.Deserialize<PersonOfInterest>(PersonOfInterest);
-        Console.WriteLine(JohnDoe);
+        PersonOfInterest person = new PersonOfInterest();
     }
 }
