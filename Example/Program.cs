@@ -2,33 +2,6 @@
 using TypeExtensions.Generated;
 internal class Program
 {
-    /*
-     ""Name"" : ""John Doe"", 
-            ""Age"" : 23, 
-            ""Projects"" : [
-                {
-                    ""Title"" : ""Project UNO"",
-                    ""Value"" : {
-                        ""Estimated"" : ""23"",
-                        ""Actual"" : ""7""
-                    }
-                },
-                {
-                    ""Title"" : ""Project DOS"",
-                    ""Value"" : {
-                        ""Estimated"" : ""69"",
-                        ""Actual"" : ""123""
-                    }
-                }
-            ], 
-            ""Keys"" : [23, 69, 123], 
-            ""CurrentProject"" :{
-                ""Title"" : ""Project TRES"",
-                ""Value"" : {
-                    ""Estimated"" : ""7"",
-                    ""Actual"" : ""5""
-                }
-            }*/
     [EmitType] private static string PersonOfInterest { get; } = @"
             <PersonOfInterest Name=""John Doe"" Age=""23"">
                 <Projects test=""testing"">    
