@@ -1,5 +1,5 @@
-﻿using System.Text.Json;
-using TypeExtensions.Generated;
+﻿using TypeExtensions.Generated;
+
 internal class Program
 {
     [EmitType] private static string PersonOfInterest { get; } = @"{ 
@@ -31,11 +31,10 @@ internal class Program
             }
     }";
 
-    [EmitType("D:\\Projects\\TypeProvider\\TypeProvider.Json\\FileSample.json")] private static string SampleType2 { get; }
-
     private static void Main(string[] args)
     {
-        var JohnDoe = JsonSerializer.Deserialize<PersonOfInterest>(PersonOfInterest);
-        Console.WriteLine(JohnDoe);
+        if(PersonOfInterest_T.TryParse(PersonOfInterest, out PersonOfInterest_T parsed)) {
+            Console.WriteLine(parsed.Name);
+        }
     }
 }

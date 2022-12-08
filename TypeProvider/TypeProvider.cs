@@ -16,10 +16,10 @@ public class InvalidPropertyType : Exception {
     public InvalidPropertyType() : base($"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)") { }
 }
 public class InvalidPropertyAccess : Exception {
-    public InvalidPropertyAccess() : base($"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)") { }
+    public InvalidPropertyAccess() : base($"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)") { }
 }
 public class InvalidPropertyValue : Exception {
-    public InvalidPropertyValue() : base($"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)") { }
+    public InvalidPropertyValue() : base($"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)") { }
 }
 
 public static class ToolExtensions {
@@ -40,7 +40,7 @@ public static class ToolExtensions {
 }
 public class TypeInstantiator
 {
-    public string EmitForm(IEnumerable<(string type, string name)> props, bool IsTarget = false)
+    public string EmitForm(string name, IEnumerable<(string type, string name)> props, bool IsTarget = false)
     {
         var sb = new StringBuilder();
         sb.Append("{\n");
@@ -55,11 +55,28 @@ public class TypeInstantiator
         {
             sb.Append($"\tpublic {prop.type} {prop.name} {{ get; set; }}\n");
         }
+
+        if(IsTarget) {
+            sb.Append($@"
+    public static bool TryParse(string jsonText, out {name} result) {{
+        try {{
+            result = JsonSerializer.Deserialize<{name}>(jsonText);
+            return true;
+        }} catch {{
+            result = default;
+            return false;
+        }}
+    }}
+");
+
+            sb.Append($"\tpublic override string ToString() => JsonSerializer.Serialize<{name}>(this);\n");
+        }
+
         sb.Append("}\n");
         return sb.ToString();
     }
     public static string FileTemplate(string fileBody)
-        => $"using System;\nnamespace TypeExtensions.Generated;\n\n{fileBody}";
+        => $"using System;\nusing System.Text.Json;\nnamespace TypeExtensions.Generated;\n\n{fileBody}";
 
     public static string TypeTemplate(string scope, string typename, String body, string typekind, int nesting = 0)
     {
@@ -82,7 +99,7 @@ public class TypeInstantiator
             properties.Add((prop_type, prop_name));
         }
 
-        var recordForm = EmitForm(properties, properType);
+        var recordForm = EmitForm(name, properties, properType);
         if(properType)
         {
             emmited_types.Add(0, name);
@@ -128,21 +145,7 @@ public class TypeInstantiator
             return $"Object[]";
         }
 
-        try
-        {
-            return $"{GetEnumerableType(first.Value.EnumerateArray(), name)}[]";
-        }
-        catch
-        {
-            try
-            {
-                return $"{GetObjectType(first.Value.EnumerateObject(), name)}[]";
-            }
-            catch
-            {
-                return $"{GetValueType(first.Value.ValueKind)}[]";
-            }
-        }
+        return $"{GetPropertyKind(first.Value, name)}[]";
     }
 
     string GetValueType(JsonValueKind kind)
@@ -153,7 +156,6 @@ public class TypeInstantiator
             JsonValueKind.String => typeof(String).Name,
             JsonValueKind.Null or JsonValueKind.Undefined => typeof(Object).Name,
             JsonValueKind.False or JsonValueKind.True => typeof(bool).Name,
-
         };
     }
 
@@ -220,7 +222,7 @@ public class TypesGenerator : ISourceGenerator
                         {
                             typesample = semanticModel.GetConstantValue(propDef.Initializer.Value).ToString();
                         }
-                        return (typename, typesample);
+                        return ($"{typename}_T", typesample);
                     });
             }).ToArray();
     }
