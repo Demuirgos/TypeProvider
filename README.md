@@ -1,5 +1,5 @@
-# TypeProvider.Json
-A prototype remake of FSharp.JsonTypeProvider in CSharp
+# TypeProvider.Xml
+A prototype remake of FSharp.XmlTypeProvider in CSharp
 
 Usage : 
 ```csharp
