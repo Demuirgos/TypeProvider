@@ -17,10 +17,10 @@ public class InvalidPropertyType : Exception {
     public InvalidPropertyType() : base($"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)") { }
 }
 public class InvalidPropertyAccess : Exception {
-    public InvalidPropertyAccess() : base($"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)") { }
+    public InvalidPropertyAccess() : base($"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)") { }
 }
 public class InvalidPropertyValue : Exception {
-    public InvalidPropertyValue() : base($"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)") { }
+    public InvalidPropertyValue() : base($"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)") { }
 }
 
 public static class ToolExtensions {
@@ -255,7 +255,7 @@ public class TypesGenerator : ISourceGenerator
                         {
                             typesample = semanticModel.GetConstantValue(propDef.Initializer.Value).ToString();
                         }
-                        return (typename, typesample);
+                        return ($"{typename}_T", typesample);
                     });
             }).ToArray();
     }
