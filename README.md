@@ -3,39 +3,58 @@ A prototype remake of FSharp.JsonTypeProvider in CSharp
 
 Usage : 
 ```csharp
-[EmitType] private static string SampleType1 { get; } = @"{ 
-    ""boolVal"" : true, 
-    ""numVal"" : 23.69, 
-    ""objVal"" : {
-      ""nestedField"" : ""23""
-    }, 
-    ""arrVal"" : [23, 69], 
-    ""arrObjVal"" : [
+[EmitType] private static string PersonOfInterest { get; } = @"{ 
+            ""Name"" : ""John Doe"", 
+            ""Age"" : 23, 
+            ""Projects"" : [
+                {
+                    ""Title"" : ""Project UNO"",
+                    ""Value"" : {
+                        ""Estimated"" : ""23"",
+                        ""Actual"" : ""7""
+                    }
+                },
+                {
+                    ""Title"" : ""Project DOS"",
+                    ""Value"" : {
+                        ""Estimated"" : ""69"",
+                        ""Actual"" : ""123""
+                    }
+                }
+            ], 
+            ""Keys"" : [23, 69, 123], 
+            ""CurrentProject"" :{
+                ""Title"" : ""Project TRES"",
+                ""Value"" : {
+                    ""Estimated"" : ""7"",
+                    ""Actual"" : ""5""
+                }
+            }
+    }";
+
+    private static void Main(string[] args)
     {
-      ""nestedField"" : ""23""
+        PersonOfInterest person = new();
     }
-  ] 
-}";
-
-[EmitType("./FileSample.json")] private static string SampleType2 { get; }
-
-private static void Main(string[] args)
-{
-  SampleType1 test = JsonSerializer.Deserialize<SampleType1>(SampleType1);
-}
 ```
 
 Generated : 
 ```csharp
-public record SampleType1 {
-	public record ObjVal_T {
-		public String nestedField { get; set; }
+public record PersonOfInterest {
+	public record Value_T {
+		public String Estimated { get; set; }
+		public String Actual { get; set; }
 	}
 	
-	public Boolean boolVal { get; set; }
-	public Decimal numVal { get; set; }
-	public ObjVal_T objVal { get; set; }
-	public Decimal[] arrVal { get; set; }
-	public ObjVal_T[] arrObjVal { get; set; }
+	public record Projects_T {
+		public String Title { get; set; }
+		public Value_T Value { get; set; }
+	}
+	
+	public String Name { get; set; }
+	public Decimal Age { get; set; }
+	public Projects_T[] Projects { get; set; }
+	public Decimal[] Keys { get; set; }
+	public Projects_T CurrentProject { get; set; }
 }
 ```
