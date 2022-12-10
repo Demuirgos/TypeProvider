@@ -11,6 +11,7 @@ using Microsoft.CodeAnalysis.Text;
 using System.Text.Json;
 using System.Data;
 using System.IO;
+using System.Text.Json.Nodes;
 
 public class InvalidPropertyType : Exception {
     public InvalidPropertyType() : base($"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)") { }
@@ -132,7 +133,7 @@ public class TypeInstantiator
         {
             JsonValueKind.Array => GetEnumerableType(values.EnumerateArray(), name),
             JsonValueKind.Object => GetObjectType(values.EnumerateObject(), name),
-            _ => GetValueType(values.ValueKind)
+            _ => GetValueType(values.ValueKind, values.ToString())
         };
     }
 
@@ -148,12 +149,12 @@ public class TypeInstantiator
         return $"{GetPropertyKind(first.Value, name)}[]";
     }
 
-    string GetValueType(JsonValueKind kind)
+    string GetValueType(JsonValueKind kind, string value)
     {
         return kind switch
         {
             JsonValueKind.Number => typeof(Decimal).Name,
-            JsonValueKind.String => typeof(String).Name,
+            JsonValueKind.String => DateTime.TryParse(value, out _) ? typeof(DateTime).Name : typeof(String).Name,
             JsonValueKind.Null or JsonValueKind.Undefined => typeof(Object).Name,
             JsonValueKind.False or JsonValueKind.True => typeof(bool).Name,
         };
