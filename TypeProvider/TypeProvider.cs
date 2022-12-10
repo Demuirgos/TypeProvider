@@ -186,6 +186,8 @@ public class TypeInstantiator
             return nameof(Decimal);
         } else if(Boolean.TryParse(kind, out _)) {
             return nameof(Boolean);
+        } else if(DateTime.TryParse(kind, out _)) {
+            return nameof(Boolean);
         } else if(String.IsNullOrEmpty(kind)) {
             return nameof(Object);
         } else return nameof(String);
