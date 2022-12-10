@@ -12,6 +12,7 @@ using Microsoft.CodeAnalysis.Text;
 using System.Text.Json;
 using System.Data;
 using System.IO;
+using System.Reflection.PortableExecutable;
 
 public class InvalidPropertyType : Exception {
     public InvalidPropertyType() : base($"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)") { }
@@ -29,7 +30,7 @@ public static class ToolExtensions {
                         .TextInfo
                         .ToTitleCase(Identifier.ToLower().Replace("_", " ")).Replace(" ", string.Empty);
 
-    public static DiagnosticDescriptor Rule(Exception ex) => new DiagnosticDescriptor(
+    public static DiagnosticDescriptor Rule(this Exception ex) => new DiagnosticDescriptor(
         id: "JTP01",
         title: "Argument format error",
         category: "Design",
@@ -41,20 +42,14 @@ public static class ToolExtensions {
 }
 public class TypeInstantiator
 {
-    public string EmitForm(IEnumerable<(string type, string name)> props, bool IsTarget = false)
+    public string EmitForm(IEnumerable<(string name, string type)> props)
     {
         var sb = new StringBuilder();
         sb.Append("{\n");
-        if (IsTarget)
-        {
-            foreach(var typedef in type_impl)
-            {
-                sb.Append(TypeTemplate("public", typedef.Key, typedef.Value, "record", 1));
-            }
-        }
         foreach (var prop in props)
         {
-            sb.Append($"\tpublic {prop.type} {prop.name} {{ get; set; }}\n");
+            var cleanedName = prop.name.Trim(new Char[] { ' ', '\"'}).ToPascal();
+            sb.Append($"\tpublic {prop.type} {cleanedName} {{ get; set; }}\n");
         }
         sb.Append("}\n");
         return sb.ToString();
@@ -72,132 +67,72 @@ public class TypeInstantiator
     private int i = 0;
     private Dictionary<int, string> emmited_types = new(); // hashform => typename
     private Dictionary<string, string> type_impl = new(); // typename => codeform
-    string AddTypeToEmitionTargets(ref string name, bool properType, List<(string type, string name)> properties)
+    string AddTypeToEmitionTargets(ref string name, List<(string type, string name)> properties)
     {
         string typename(string name, int i) => $"{name}{i}";
-        var recordForm = EmitForm(properties, properType);
-        if (properType)
-        {
-            emmited_types.Add(0, name);
-            type_impl.Add(name, recordForm);
-            return name;
-        }
-        else
-        {
-            var hashedForm = recordForm.GetHashCode();
-            if (emmited_types.TryGetValue(hashedForm, out var tname))
-            {
-                return tname;
-            }
-            else
-            {
-
-                while (type_impl.ContainsKey(name))
-                {
-                    name = typename(name, ++i);
-                }
-
-                emmited_types[hashedForm] = name;
-                type_impl[name] = recordForm;
-                return name;
-            }
-        }
+        var recordForm = EmitForm(properties);
+        emmited_types.Add(0, name);
+        type_impl.Add(name, recordForm);
+        return name;
     }
-    string GetObjectType(XmlNode obj, string name, bool properType = false)
+    string GetObjectType(List<(string name, string type)> properties, string name)
     {
-        List<(string type, string name)> properties = new();
-        foreach (XmlNode node in obj.ChildNodes)
-        {
-            var prop_name = node.Name;
-            var prop_type = GetPropertyKind(node, $"{prop_name.ToPascal()}_T");
-            properties.Add((prop_type, prop_name));
-        }
-        if (obj.Attributes is not null)
-        {
-            foreach (XmlAttribute node in obj.Attributes)
-            {
-                var prop_name = node.Name;
-                var prop_type = GetValueType(node.InnerText);
-                properties.Add((prop_type, prop_name));
-            }
-        }
-
-        return AddTypeToEmitionTargets(ref name, properType, properties);
+        return AddTypeToEmitionTargets(ref name, properties);
     }
-
-    string GetPropertyKind(XmlNode value, string name)
-    {
-        bool isValue(XmlNode node) => node.ChildNodes.Count == 0 && node.Attributes.Count == 0;
-        if (isValue(value)) {
-            return "Object?";
-        }else {
-            if (value.ChildNodes.Count == 1)
-            {
-                XmlNode first = value.ChildNodes.Item(0);
-                if(first.NodeType == XmlNodeType.Text)
-                {
-                    return GetValueType(value.InnerText);
-                } 
-            }
-
-            if (value.ChildNodes.Count > 1)
-                {
-                bool isList = true;
-                XmlElement first = (XmlElement)value.ChildNodes.Item(0);
-                foreach(XmlElement child in value.ChildNodes) {
-                    isList &=
-                            child.ChildNodes.Count == first.ChildNodes.Count &&
-                            child.Attributes.Count == first.Attributes.Count && 
-                            child.Name == first.Name;
-                }
-
-                if(isList) {
-                    var mainType = GetEnumerableType(value, $"{first.Name}_T");
-                    if (value.Attributes.Count == 0)
-                        return mainType;
-                    List<(string type, string name)> properties = new();
-                    properties.Add((mainType, first.Name));
-                    if (value.Attributes is not null)
-                    {
-                        foreach (XmlAttribute node in value.Attributes)
-                        {
-                            var prop_name = node.Name;
-                            var prop_type = GetValueType(node.InnerText);
-                            properties.Add((prop_type, prop_name));
-                        }
-                    }
-                    AddTypeToEmitionTargets(ref name, false, properties);
-                    return name;
-                }        
-            }
-            return GetObjectType(value, $"{value.Name}_T");
-        }
-    }
-
-    string GetEnumerableType(XmlNode values, string name)
-    {
-        XmlElement first = (XmlElement)values.ChildNodes.Item(1);
-        return $"{GetPropertyKind(first, name)}[]";
-    }
-
+ 
     string GetValueType(string kind)
     {
-        if(Decimal.TryParse(kind, out _)) {
+        if(kind == "null") return nameof(Object);
+        
+        if(Decimal.TryParse(kind, out _)) 
+        {
             return nameof(Decimal);
-        } else if(Boolean.TryParse(kind, out _)) {
+        }
+        else if (Boolean.TryParse(kind, out _))
+        {
             return nameof(Boolean);
-        } else if(String.IsNullOrEmpty(kind)) {
-            return nameof(Object);
-        } else return nameof(String);
+        }
+        else if (DateTime.TryParse(kind, out _))
+        {
+            return nameof(DateTime);
+        } 
+        else if(String.IsNullOrEmpty(kind)) 
+        {
+            throw new Exception("Invalid field : empty string");
+        } 
+        else return nameof(String);
+    }
+
+    public Dictionary<int, (string name, string type)> ExtractStructure(string csvString)
+    {
+        byte[] byteArray = Encoding.UTF8.GetBytes(csvString);
+        MemoryStream stream = new MemoryStream(byteArray);
+        StreamReader reader = new StreamReader(stream);
+        Dictionary<int, (string name, string type)> fields = new();
+
+        string line = reader.ReadLine();
+        string[] values = line.Split(',');
+        for (int i = 0; i < values.Length; i++)
+        {
+            fields.Add(i, (values[i], "String"));
+        }
+
+        while((line = reader.ReadLine()) != null) {
+            values = line.Split(',');
+            for (int i = 0; i < values.Length; i++)
+            {
+                fields[i] = (fields[i].name, GetValueType(values[i].Trim()));
+            }
+        }
+        return fields;
     }
 
     public void GenerateTypes(string name, string sample, bool isRecord = false)
     {
         try
         {
-            XmlDocument tree = new XmlDocument();
-            tree.LoadXml(sample);
-            _ = GetObjectType(tree, name, properType: true);
+            var table = ExtractStructure(sample);
+            _ = GetObjectType(table.Values.ToList(), name);
         } catch (Exception ex)
         {
             throw new InvalidPropertyValue();
@@ -267,13 +202,13 @@ public class TypesGenerator : ISourceGenerator
             foreach (var (name, sample) in allSamples)
             {
                 var engine = new TypeInstantiator();
-                engine.GenerateTypes(name, sample);
+                engine.GenerateTypes(name, sample.Trim());
                 context.AddSource($"{name}.Type.g.cs", SourceText.From(engine.EmitTypes(name), Encoding.UTF8));
             }
 
         }
         catch (Exception ex){
-            context.ReportDiagnostic(Diagnostic.Create(ToolExtensions.Rule(ex), Location.None));
+            context.ReportDiagnostic(Diagnostic.Create(ex.Rule(), Location.None));
         }
 
     }
@@ -281,10 +216,10 @@ public class TypesGenerator : ISourceGenerator
     public void Initialize(GeneratorInitializationContext context)
     {
 #if DEBUG
-         // if (!Debugger.IsAttached)
-         // {
-         //     Debugger.Launch();
-         // }
+          // if (!Debugger.IsAttached)
+          // {
+          //     Debugger.Launch();
+          // }
 #endif 
     }
 }
