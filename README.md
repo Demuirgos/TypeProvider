@@ -34,7 +34,7 @@ Usage :
 
     private static void Main(string[] args)
     {
-        PersonOfInterest person = new();
+        PersonOfInterest_T person = new PersonOfInterest_T();
     }
 ```
 
