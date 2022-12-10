@@ -42,7 +42,22 @@ public static class ToolExtensions {
 }
 public class TypeInstantiator
 {
-    public string EmitForm(IEnumerable<(string name, string type)> props)
+    public string EmitParser(string name, IEnumerable<(string name, string type)> props) {
+        var sb = new StringBuilder();
+        sb.Append($"result = new {name}();\n");
+        sb.Append($"\t\t\tstring[] values = csvLine.Split(',');\n");
+        for (int i = 0; i < props.Count(); i++)
+        {
+            (string propName, string propType) = props.ElementAt(i);
+            propName = propName.Trim(new Char[] { ' ', '\"'}).ToPascal();
+            if(propType == nameof(String))
+                sb.Append($"\t\t\tresult.{propName} = values[{i}].Trim();\n");
+            else 
+                sb.Append($"\t\t\tresult.{propName} = {propType}.Parse(values[{i}].Trim());\n");   
+        }
+        return sb.ToString();
+    }
+    public string EmitForm(string name, IEnumerable<(string name, string type)> props)
     {
         var sb = new StringBuilder();
         sb.Append("{\n");
@@ -51,11 +66,44 @@ public class TypeInstantiator
             var cleanedName = prop.name.Trim(new Char[] { ' ', '\"'}).ToPascal();
             sb.Append($"\tpublic {prop.type} {cleanedName} {{ get; set; }}\n");
         }
+
+        sb.Append($@"
+    public static bool TryParse(string csvLine, out {name} result) {{
+        try {{
+            {EmitParser(name, props)}
+            return true;
+        }} catch (Exception) {{
+            result = default;
+            return false;
+        }}
+    }}
+");
+
+        sb.Append($@"
+public static IEnumerable<{name}> ParseTable(string csvTable, bool hasHeader) {{
+    byte[] byteArray = Encoding.UTF8.GetBytes(csvTable);
+    MemoryStream stream = new MemoryStream(byteArray);
+    StreamReader reader = new StreamReader(stream);
+
+    string line = reader.ReadLine();
+    while (line != null && String.IsNullOrWhiteSpace(line))
+           line = reader.ReadLine(); 
+
+    if(hasHeader) line = reader.ReadLine();
+    do {{
+        if(TryParse(line, out var result))
+            yield return result;
+        else throw new Exception(""Invalid csv line"");
+    }} while((line = reader.ReadLine()) != null);
+}}
+        ");
+
+        sb.Append($"\tpublic override string ToString() => JsonSerializer.Serialize<{name}>(this);\n");
         sb.Append("}\n");
         return sb.ToString();
     }
     public static string FileTemplate(string fileBody)
-        => $"using System;\nnamespace TypeExtensions.Generated;\n\n{fileBody}";
+        => $"using System;\nusing System.Text.Json;\nusing System.Text;\nnamespace TypeExtensions.Generated;\n\n{fileBody}";
 
     public static string TypeTemplate(string scope, string typename, String body, string typekind, int nesting = 0)
     {
@@ -70,7 +118,7 @@ public class TypeInstantiator
     string AddTypeToEmitionTargets(ref string name, List<(string type, string name)> properties)
     {
         string typename(string name, int i) => $"{name}{i}";
-        var recordForm = EmitForm(properties);
+        var recordForm = EmitForm(name, properties);
         emmited_types.Add(0, name);
         type_impl.Add(name, recordForm);
         return name;
