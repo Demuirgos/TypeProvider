@@ -322,6 +322,9 @@ public class TypeInstantiator
                     return name;
                 }        
             }
+            if(targetType){
+                return GetObjectType(value, name, targetType);
+            }
             return GetObjectType(value, $"{value.Name}_T", targetType);
         }
     }
