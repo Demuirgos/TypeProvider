@@ -1,5 +1,5 @@
 # TypeProvider.General
-A prototype remake of FSharp.XmlTypeProvider in CSharp
+A prototype remake of FSharp.TypeProvider in CSharp
 
 Usage : 
 ```csharp
