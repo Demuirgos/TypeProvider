@@ -75,12 +75,12 @@ public class TypeInstantiator
                 if(!isAttr) {
                     if(ptype == nameof(String)) {
                         sb.Append($@"
-{prefix}            result.{pname} = doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").InnerText;
+{prefix}            result.{pname} = doc.FirstChild.SelectSingleNode($""{pname}"").InnerText;
                         ");
                     } else 
                     {
                         sb.Append($@"
-{prefix}            if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").InnerText, out {ptype} item_{pname}{i})) {{
+{prefix}            if({ptype}.TryParse(doc..FirstChild.SelectSingleNode($""{pname}"").InnerText, out {ptype} item_{pname}{i})) {{
 {prefix}                result.{pname} = item_{pname}{i++};
 {prefix}            }} else {{
 {prefix}                throw new Exception(""Invalid Property Type"");
@@ -92,12 +92,12 @@ public class TypeInstantiator
                 else {
                     if(ptype == nameof(String)) {
                         sb.Append($@"
-{prefix}            result.{pname} = doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}"").Attributes[""{pname}""].InnerText;
+{prefix}            result.{pname} = doc.FirstChild.Attributes[""{pname}""].InnerText;
                         ");
                     } else 
                     {
                         sb.Append($@"
-{prefix}            if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}"").Attributes[""{pname}""].InnerText, out {ptype} item_{pname}{i})) {{
+{prefix}            if({ptype}.TryParse(doc.FirstChild.Attributes[""{pname}""].InnerText, out {ptype} item_{pname}{i})) {{
 {prefix}                result.{pname} = item_{pname}{i++};
 {prefix}            }} else {{
 {prefix}                throw new Exception(""Invalid Property Type"");
@@ -127,7 +127,7 @@ public class TypeInstantiator
 {prefix}            var temp_{pname}{i + j} = new List<{typeName}>();");
             if(i == 0) {
                     sb.Append($@"
-{prefix}            foreach (XmlElement node_{i + j} in doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").ChildNodes)
+{prefix}            foreach (XmlElement node_{i + j} in doc.FirstChild.SelectSingleNode($""{pname}"").ChildNodes)
 {prefix}            {{");
             } else {
                 sb.Append($@"
@@ -171,13 +171,20 @@ public class TypeInstantiator
             int i = 0;
             if (isPrimitiveType(ptype))
             {
-                sb.Append($@"
-{prefix}                if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").OuterXml, out {ptype} item_{pname}{i + j})) {{");
+                if(ptype == nameof(String)) {
+                    sb.Append($@"
+{prefix}                result.{pname} = doc.FirstChild.SelectSingleNode($""{pname}"").InnerXml;
+                    ");
+                } else 
+                {
+                    sb.Append($@"
+{prefix}                if({ptype}.TryParse(doc.FirstChild.SelectSingleNode($""{pname}"").InnerXml, out {ptype} item_{pname}{i + j})) {{");
+                }
             }
             else
             {
                 sb.Append($@"
-{prefix}                if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").OuterXml, out {ptype} item_{pname}{i + j}, ""{pname}"")) {{");
+{prefix}                if({ptype}.TryParse(doc.FirstChild.SelectSingleNode($""{pname}"").OuterXml, out {ptype} item_{pname}{i + j}, ""{pname}"")) {{");
             }
             sb.Append($@"
 {prefix}                result.{pname} = item_{pname}{j + i++};
