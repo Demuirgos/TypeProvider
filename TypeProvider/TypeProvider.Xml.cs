@@ -13,33 +13,10 @@ using System.Text.Json;
 using System.Data;
 using System.IO;
 
-public class InvalidPropertyType : Exception {
-    public InvalidPropertyType(Exception ex = null) : base($"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)", ex) { }
-}
-public class InvalidPropertyAccess : Exception {
-    public InvalidPropertyAccess(Exception ex = null) : base($"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)", ex) { }
-}
-public class InvalidPropertyValue : Exception {
-    public InvalidPropertyValue(Exception ex = null) : base($"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)", ex) { }
-}
+using TypeProvider.Shared;
 
-public static class ToolExtensions {
-    public static string ToPascal(this string Identifier) 
-        =>  CultureInfo.CurrentCulture
-                        .TextInfo
-                        .ToTitleCase(Identifier.ToLower().Replace("_", " ")).Replace(" ", string.Empty);
-
-    public static DiagnosticDescriptor Rule(Exception ex) => new DiagnosticDescriptor(
-        id: "XTP01",
-        title: "Argument format error",
-        category: "Design",
-        defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true,
-        description: "Property Type Emission must be : Readonly, a string and private static",
-        messageFormat: $"{ex.Message}\n{ex.InnerException?.StackTrace ?? ex?.StackTrace}");
-
-}
-public class TypeInstantiator
+namespace TypeProvider.Xml;
+public class TypeInstantiator : ITypeEmitter
 {
     public string InjectParser(string form, string Parsers) {
         var lastBraket = form.LastIndexOf("}");
@@ -75,13 +52,13 @@ public class TypeInstantiator
                 if(!isAttr) {
                     if(ptype == nameof(String)) {
                         sb.Append($@"
-{prefix}            result.{pname} = doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").InnerText;
+{prefix}            result.{pname} = doc.FirstChild.SelectSingleNode($""{pname}"").InnerText;
                         ");
                     } else 
                     {
                         sb.Append($@"
-{prefix}            if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").InnerText, out {ptype} item_{i})) {{
-{prefix}                result.{pname} = item_{i++};
+{prefix}            if({ptype}.TryParse(doc..FirstChild.SelectSingleNode($""{pname}"").InnerText, out {ptype} item_{pname}{i})) {{
+{prefix}                result.{pname} = item_{pname}{i++};
 {prefix}            }} else {{
 {prefix}                throw new Exception(""Invalid Property Type"");
 {prefix}            }}
@@ -92,13 +69,13 @@ public class TypeInstantiator
                 else {
                     if(ptype == nameof(String)) {
                         sb.Append($@"
-{prefix}            result.{pname} = doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}"").Attributes[""{pname}""].InnerText;
+{prefix}            result.{pname} = doc.FirstChild.Attributes[""{pname}""].InnerText;
                         ");
                     } else 
                     {
                         sb.Append($@"
-{prefix}            if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}"").Attributes[""{pname}""].InnerText, out {ptype} item_{i})) {{
-{prefix}                result.{pname} = item_{i++};
+{prefix}            if({ptype}.TryParse(doc.FirstChild.Attributes[""{pname}""].InnerText, out {ptype} item_{pname}{i})) {{
+{prefix}                result.{pname} = item_{pname}{i++};
 {prefix}            }} else {{
 {prefix}                throw new Exception(""Invalid Property Type"");
 {prefix}            }}
@@ -124,48 +101,44 @@ public class TypeInstantiator
             int i = 0;
             string typeName = ptype.Substring(0, ptype.Length - 2);
             sb.Append($@"
-{prefix}            var temp_{i + j} = new List<{typeName}>();");
-            if (!isList(typeName))
-            {
+{prefix}            var temp_{pname}{i + j} = new List<{typeName}>();");
+            if(i == 0) {
+                    sb.Append($@"
+{prefix}            foreach (XmlElement node_{i + j} in doc.FirstChild.SelectSingleNode($""{pname}"").ChildNodes)
+{prefix}            {{");
+            } else {
                 sb.Append($@"
 {prefix}            foreach (XmlElement node_{i + j} in node_{i + j - 1}.ChildNodes)
 {prefix}            {{");
+            }
+
+            if (!isList(typeName))
+            {
                 sb.Append($@"
-{prefix}                if({typeName}.TryParse(node_{i + j}.{(isPrimitiveType(typeName) ? "InnerXml" : "OuterXml")}, out {typeName} item_{i + j})) {{");
+{prefix}                if({typeName}.TryParse(node_{i + j}.{(isPrimitiveType(typeName) ? "InnerXml" : "OuterXml")}, out {typeName} item_{pname}{i + j})) {{");
                 sb.Append($@"
-{prefix}                    temp_{i + j}.Add(item_{j + i});
+{prefix}                    temp_{pname}{i + j}.Add(item_{pname}{j + i});
 {prefix}                }} else {{
 {prefix}                    throw new Exception(""Invalid Property Type"");
 {prefix}                }}
 {prefix}            }}");
-                sb.Append($@"
-{prefix}            temp_{i + j - 1}.Add(temp_{i + j}.ToArray());
-                    ");
             }
             else
             {
-                if(i == 0) {
-                    sb.Append($@"
-{prefix}            foreach (XmlElement node_{i + j} in doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").ChildNodes)
-{prefix}            {{");
-                } else {
-                    sb.Append($@"
-{prefix}            foreach (XmlElement node_{i + j} in node_{i + j - 1}.ChildNodes)
-{prefix}            {{");
-                }
                 typeName = ptype.Substring(0, ptype.Length - 2);
-                EmitListParser(name, sb, $"{prefix}\t", i+1, typeName, pname);
+                j = EmitListParser(name, sb, $"{prefix}\t", i+1, typeName, pname);
                 sb.Append($@"
 {prefix}            }}");
-                if(i > 0)
-                    sb.Append($@"
-{prefix}            temp_{i + j - 2}.Add(temp_{i + j - 1}.ToArray());
-                    ");
-                else
-                    sb.Append($@"
-{prefix}            result.{pname} = temp_{i + j}.ToArray();
-                    ");
             }
+            
+            if(i > 0)
+                sb.Append($@"
+{prefix}            temp_{pname}{i + j - 2}.Add(temp_{pname}{i + j - 1}.ToArray());
+                ");
+            else
+                sb.Append($@"
+{prefix}            result.{pname} = temp_{pname}{i + j}.ToArray();
+                ");
 
             return i + j;
         }
@@ -175,16 +148,23 @@ public class TypeInstantiator
             int i = 0;
             if (isPrimitiveType(ptype))
             {
-                sb.Append($@"
-{prefix}                if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").OuterXml, out {ptype} item_{i + j})) {{");
+                if(ptype == nameof(String)) {
+                    sb.Append($@"
+{prefix}                result.{pname} = doc.FirstChild.SelectSingleNode($""{pname}"").InnerXml;
+                    ");
+                } else 
+                {
+                    sb.Append($@"
+{prefix}                if({ptype}.TryParse(doc.FirstChild.SelectSingleNode($""{pname}"").InnerXml, out {ptype} item_{pname}{i + j})) {{");
+                }
             }
             else
             {
                 sb.Append($@"
-{prefix}                if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").OuterXml, out {ptype} item_{i + j}, ""{pname}"")) {{");
+{prefix}                if({ptype}.TryParse(doc.FirstChild.SelectSingleNode($""{pname}"").OuterXml, out {ptype} item_{pname}{i + j}, ""{pname}"")) {{");
             }
             sb.Append($@"
-{prefix}                result.{pname} = item_{j + i++};
+{prefix}                result.{pname} = item_{pname}{j + i++};
 {prefix}            }} else {{
 {prefix}                throw new Exception(""Invalid Property Type"");
 {prefix}            }}
@@ -270,7 +250,7 @@ public class TypeInstantiator
         }
         if (obj.Attributes is not null)
         {
-            foreach (XmlAttribute node in obj.Attributes)
+            foreach (System.Xml.XmlAttribute node in obj.Attributes)
             {
                 var prop_name = node.Name;
                 var prop_type = GetValueType(node.InnerText);
@@ -315,7 +295,7 @@ public class TypeInstantiator
                     properties.Add((mainType, first.Name, false));
                     if (value.Attributes is not null)
                     {
-                        foreach (XmlAttribute node in value.Attributes)
+                        foreach (System.Xml.XmlAttribute node in value.Attributes)
                         {
                             var prop_name = node.Name;
                             var prop_type = GetValueType(node.InnerText);
@@ -325,6 +305,9 @@ public class TypeInstantiator
                     AddTypeToEmitionTargets(ref name, false, properties);
                     return name;
                 }        
+            }
+            if(targetType){
+                return GetObjectType(value, name, targetType);
             }
             return GetObjectType(value, $"{value.Name}_T", targetType);
         }
@@ -368,81 +351,5 @@ public class TypeInstantiator
         var type_code = TypeTemplate("public" /*isRoot ? "file" : "public"*/, name, type_impl[name], "record");
         sb.Append(type_code);
         return FileTemplate(sb.ToString());
-    }
-}
-
-[Generator]
-public class TypesGenerator : ISourceGenerator
-{
-    private (string, string)[] GetAllMarkedProperties(Compilation context)
-    {
-        IEnumerable<SyntaxNode> allNodes = context.SyntaxTrees.SelectMany(s => s.GetRoot().DescendantNodes());
-        return allNodes
-            .Where(d => d.IsKind(SyntaxKind.PropertyDeclaration))
-            .OfType<PropertyDeclarationSyntax>()
-            .SelectMany(propDef =>
-            {
-                var semanticModel = context.GetSemanticModel(propDef.SyntaxTree);
-                var type = semanticModel.GetTypeInfo(propDef.Type).Type;
-                if (type.SpecialType != SpecialType.System_String)
-                {
-                    throw new InvalidPropertyType();
-                }
-
-                if (propDef.AccessorList.Accessors.Any(SyntaxKind.SetAccessorDeclaration))
-                {
-                    throw new InvalidPropertyAccess();
-                }
-
-                return propDef.AttributeLists
-                    .SelectMany(x => x.Attributes)
-                    .Where(attr =>
-                    {
-                        var attrName = attr.Name.ToString();
-                        return attrName == nameof(EmitTypeAttribute).Replace("Attribute", String.Empty);
-                    }).Select(attr =>
-                    {
-                        var typename = propDef.Identifier.Value.ToString();
-                        bool fromFile = attr.ArgumentList?.Arguments.Count > 0;
-                        string typesample;
-                        if (fromFile)
-                        {
-                            var path = semanticModel.GetConstantValue(attr.ArgumentList.Arguments.Single().Expression).ToString();
-                            typesample = File.ReadAllText(path);
-                        } else
-                        {
-                            typesample = semanticModel.GetConstantValue(propDef.Initializer.Value).ToString();
-                        }
-                        return ($"{typename}_T", typesample);
-                    });
-            }).ToArray();
-    }
-    public void Execute(GeneratorExecutionContext context)
-    {
-        try
-        {
-            var allSamples = GetAllMarkedProperties(context.Compilation);
-            foreach (var (name, sample) in allSamples)
-            {
-                var engine = new TypeInstantiator();
-                engine.GenerateTypes(name, sample);
-                context.AddSource($"{name}.Type.g.cs", SourceText.From(engine.EmitTypes(name), Encoding.UTF8));
-            }
-
-        }
-        catch (Exception ex){
-            context.ReportDiagnostic(Diagnostic.Create(ToolExtensions.Rule(ex), Location.None));
-        }
-
-    }
-
-    public void Initialize(GeneratorInitializationContext context)
-    {
-#if DEBUG
-        // if (!Debugger.IsAttached)
-        // {
-        //     Debugger.Launch();
-        // }
-#endif 
     }
 }
