@@ -96,19 +96,10 @@ public record PersonOfInterest {
 		public String Title { get; set; }
 	}
 	
-	public record Projects_T {
-		public Project_T[] Project { get; set; }
-		public String test { get; set; }
-	}
-	
-	public record CurrentProject_T {
-		public Project_T Project { get; set; }
-	}
-	
 	public record PersonOfInterest_T {
-		public Projects_T Projects { get; set; }
+		public Project_T[] Projects { get; set; }
 		public Decimal[] Keys { get; set; }
-		public CurrentProject_T CurrentProject { get; set; }
+		public Projects_T CurrentProject { get; set; }
 		public String Name { get; set; }
 		public Decimal Age { get; set; }
 	}
