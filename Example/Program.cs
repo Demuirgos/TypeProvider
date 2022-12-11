@@ -4,7 +4,7 @@ internal class Program
 {
     [EmitType] private static string PersonOfInterest { get; } = @"
             <PersonOfInterest Name=""John Doe"" Age=""23"">
-                <Projects test=""testing"">    
+                <Projects>    
                     <Project Title=""Project UNO"">    
                         <Value Estimated=""23"" Actual=""7""/>
                     </Project>
@@ -20,15 +20,18 @@ internal class Program
                     <Key>69 </Key>
                     <Key>123</Key>
                 </Keys>
-                <CurrentProject>
-                    <Project Title=""Project DOS"">    
-                        <Value Estimated=""69"" Actual=""123""/>
-                    </Project>
+                <CurrentProject Title=""Project DOS"">
+                    <Value Estimated=""69"" Actual=""123""/>
                 </CurrentProject>
             </PersonOfInterest>";
 
     private static void Main(string[] args)
     {
-        PersonOfInterest_T person = new PersonOfInterest_T();
+        if (PersonOfInterest_T.TryParse(PersonOfInterest, out var person))
+        {
+            Console.WriteLine(person);
+        } else {
+            Console.WriteLine("Failed to parse PersonOfInterest");
+        }
     }
 }

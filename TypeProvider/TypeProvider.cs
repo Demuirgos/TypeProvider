@@ -14,13 +14,13 @@ using System.Data;
 using System.IO;
 
 public class InvalidPropertyType : Exception {
-    public InvalidPropertyType() : base($"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)") { }
+    public InvalidPropertyType(Exception ex = null) : base($"Build failed with Error : {nameof(InvalidPropertyType)} (Tagged property must be a string)", ex) { }
 }
 public class InvalidPropertyAccess : Exception {
-    public InvalidPropertyAccess() : base($"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)") { }
+    public InvalidPropertyAccess(Exception ex = null) : base($"Build failed with Error : {nameof(InvalidPropertyAccess)} (Tagged property must be readonly)", ex) { }
 }
 public class InvalidPropertyValue : Exception {
-    public InvalidPropertyValue() : base($"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)") { }
+    public InvalidPropertyValue(Exception ex = null) : base($"Build failed with Error : {nameof(InvalidPropertyValue)} (Tagged property must be a correct json)", ex) { }
 }
 
 public static class ToolExtensions {
@@ -30,18 +30,92 @@ public static class ToolExtensions {
                         .ToTitleCase(Identifier.ToLower().Replace("_", " ")).Replace(" ", string.Empty);
 
     public static DiagnosticDescriptor Rule(Exception ex) => new DiagnosticDescriptor(
-        id: "JTP01",
+        id: "XTP01",
         title: "Argument format error",
         category: "Design",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: "Property Type Emission must be : Readonly, a string and private static",
-        messageFormat: ex.Message);
+        messageFormat: $"{ex.Message}\n{ex.InnerException?.StackTrace ?? ex?.StackTrace}");
 
 }
 public class TypeInstantiator
 {
-    public string EmitForm(IEnumerable<(string type, string name)> props, bool IsTarget = false)
+    public string InjectParser(string form, string Parsers) {
+        var lastBraket = form.LastIndexOf("}");
+        return $"{form.Remove(lastBraket)}{Parsers}\n}}";
+    }
+    public string EmitParser(string name, IEnumerable<(string ptype, string pname)> props, bool isTarget = false) {
+        bool isList(string type) => type.EndsWith("[]");
+        bool isObject(string type) => type.EndsWith("_T");
+        StringBuilder sb = new();
+        string prefix = isTarget ? String.Empty : "\t";
+        sb.Append($@"
+{prefix}    public static bool TryParse(string xmlLine, out {name} result) {{
+{prefix}        try {{
+{prefix}            XmlDocument doc = new XmlDocument();
+{prefix}            doc.LoadXml(xmlLine);");
+        sb.Append($@"
+{prefix}            result = new {name}();");
+        int i = 0;
+        foreach (var (ptype, pname) in props)
+        {   
+            if (isList(ptype))
+            {
+                string typeName = ptype.Replace("[]", "");
+                sb.Append($@"
+{prefix}            var temp_{pname} = new List<{typeName}>();
+{prefix}            foreach (XmlNode node in doc.SelectNodes(""{pname}""))
+{prefix}            {{
+{prefix}                if({typeName}.TryParse(node.InnerText, out {typeName} item_{i})) {{
+{prefix}                    temp_{pname}.Add(item_{i++});
+{prefix}                }} else {{
+{prefix}                    throw new Exception(""Invalid Property Type"");
+{prefix}                }}
+{prefix}            }}
+{prefix}            result.{pname} = temp_{pname}.ToArray();
+                ");
+            }
+            else if (isObject(ptype))
+            {
+                sb.Append($@"
+{prefix}            if({ptype}.TryParse(doc.SelectSingleNode(""{pname}"").InnerText, out {ptype} item_{i})) {{
+{prefix}                result.{pname} = item_{i++};
+{prefix}            }} else {{
+{prefix}                throw new Exception(""Invalid Property Type"");
+{prefix}            }}
+                ");
+            }
+            else
+            {
+                if(ptype == nameof(String)) {
+                    sb.Append($@"
+{prefix}            result.{pname} = doc.SelectSingleNode(""{pname}"").InnerText;
+                    ");
+                } else 
+                {
+                    sb.Append($@"
+{prefix}            if({ptype}.TryParse(doc.SelectSingleNode(""{pname}"").InnerText, out {ptype} item_{i})) {{
+{prefix}                result.{pname} = item_{i++};
+{prefix}            }} else {{
+{prefix}                throw new Exception(""Invalid Property Type"");
+{prefix}            }}
+                    ");
+                }
+            }
+        }
+        sb.Append($@"
+{prefix}            return true;
+{prefix}        }} catch (Exception ex) {{
+{prefix}            result = default;
+{prefix}            return false;
+{prefix}        }}
+{prefix}    }}"
+        );
+
+        return sb.ToString();
+    }
+    public string EmitForm(string name, IEnumerable<(string type, string name)> props, bool IsTarget = false)
     {
         var sb = new StringBuilder();
         sb.Append("{\n");
@@ -56,30 +130,34 @@ public class TypeInstantiator
         {
             sb.Append($"\tpublic {prop.type} {prop.name} {{ get; set; }}\n");
         }
+
+        sb.Append($"\tpublic override string ToString() => JsonSerializer.Serialize(this);\n");
         sb.Append("}\n");
         return sb.ToString();
     }
     public static string FileTemplate(string fileBody)
-        => $"using System;\nnamespace TypeExtensions.Generated;\n\n{fileBody}";
+        => $"using System;\nusing System.Text.Json;\nusing System.Xml;\nusing System.Text;\nnamespace TypeExtensions.Generated;\n\n{fileBody}";
 
-    public static string TypeTemplate(string scope, string typename, String body, string typekind, int nesting = 0)
+    public string TypeTemplate(string scope, string typename, String body, string typekind, int nesting = 0)
     {
         string prefix = new string('\t', nesting);
         body = body.Replace("\n", $"\n{prefix}");
-        return $"{prefix}{scope} {typekind} {typename} {body}\n";
+        return $"{prefix}{scope} {typekind} {typename} {InjectParser(body, type_parser[typename])}\n";
     }
 
     private int i = 0;
     private Dictionary<int, string> emmited_types = new(); // hashform => typename
     private Dictionary<string, string> type_impl = new(); // typename => codeform
+    private Dictionary<string, string> type_parser = new(); // typename => codeform
     string AddTypeToEmitionTargets(ref string name, bool properType, List<(string type, string name)> properties)
     {
         string typename(string name, int i) => $"{name}{i}";
-        var recordForm = EmitForm(properties, properType);
+        var recordForm = EmitForm(name, properties, properType);
         if (properType)
         {
             emmited_types.Add(0, name);
             type_impl.Add(name, recordForm);
+            type_parser.Add(name, EmitParser(name, properties, properType));
             return name;
         }
         else
@@ -99,6 +177,7 @@ public class TypeInstantiator
 
                 emmited_types[hashedForm] = name;
                 type_impl[name] = recordForm;
+                type_parser[name] = EmitParser(name, properties, properType);
                 return name;
             }
         }
@@ -109,7 +188,7 @@ public class TypeInstantiator
         foreach (XmlNode node in obj.ChildNodes)
         {
             var prop_name = node.Name;
-            var prop_type = GetPropertyKind(node, $"{prop_name.ToPascal()}_T");
+            var prop_type = GetPropertyKind(node, $"{prop_name}_T");
             properties.Add((prop_type, prop_name));
         }
         if (obj.Attributes is not null)
@@ -125,7 +204,7 @@ public class TypeInstantiator
         return AddTypeToEmitionTargets(ref name, properType, properties);
     }
 
-    string GetPropertyKind(XmlNode value, string name)
+    string GetPropertyKind(XmlNode value, string name, bool targetType = false)
     {
         bool isValue(XmlNode node) => node.ChildNodes.Count == 0 && node.Attributes.Count == 0;
         if (isValue(value)) {
@@ -141,7 +220,7 @@ public class TypeInstantiator
             }
 
             if (value.ChildNodes.Count > 1)
-                {
+            {
                 bool isList = true;
                 XmlElement first = (XmlElement)value.ChildNodes.Item(0);
                 foreach(XmlElement child in value.ChildNodes) {
@@ -170,7 +249,7 @@ public class TypeInstantiator
                     return name;
                 }        
             }
-            return GetObjectType(value, $"{value.Name}_T");
+            return GetObjectType(value, $"{value.Name}_T", targetType);
         }
     }
 
@@ -199,10 +278,10 @@ public class TypeInstantiator
         {
             XmlDocument tree = new XmlDocument();
             tree.LoadXml(sample);
-            _ = GetObjectType(tree, name, properType: true);
+            _ = GetPropertyKind(tree.FirstChild, name, true);
         } catch (Exception ex)
         {
-            throw new InvalidPropertyValue();
+            throw new InvalidPropertyValue(ex);
         }
     }
 
@@ -283,10 +362,10 @@ public class TypesGenerator : ISourceGenerator
     public void Initialize(GeneratorInitializationContext context)
     {
 #if DEBUG
-         // if (!Debugger.IsAttached)
-         // {
-         //     Debugger.Launch();
-         // }
+        // if (!Debugger.IsAttached)
+        // {
+        //     Debugger.Launch();
+        // }
 #endif 
     }
 }
