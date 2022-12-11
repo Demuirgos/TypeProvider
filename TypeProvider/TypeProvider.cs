@@ -45,62 +45,66 @@ public class TypeInstantiator
         var lastBraket = form.LastIndexOf("}");
         return $"{form.Remove(lastBraket)}{Parsers}\n}}";
     }
-    public string EmitParser(string name, IEnumerable<(string ptype, string pname)> props, bool isTarget = false) {
+    public string EmitParser(string name, IEnumerable<(string ptype, string pname, bool isAttribute)> props, bool isTarget = false) {
         bool isList(string type) => type.EndsWith("[]");
         bool isObject(string type) => type.EndsWith("_T");
+        bool isPrimitiveType(string type) => !isList(type) && !isObject(type);
         StringBuilder sb = new();
         string prefix = isTarget ? String.Empty : "\t";
         sb.Append($@"
-{prefix}    public static bool TryParse(string xmlLine, out {name} result) {{
+{prefix}    public static bool TryParse(string xmlLine, out {name} result, string? sourceProperty = null) {{
 {prefix}        try {{
 {prefix}            XmlDocument doc = new XmlDocument();
 {prefix}            doc.LoadXml(xmlLine);");
         sb.Append($@"
 {prefix}            result = new {name}();");
         int i = 0;
-        foreach (var (ptype, pname) in props)
+        name = name.Replace("_T", "");
+        foreach (var (ptype, pname, isAttr) in props)
         {   
             if (isList(ptype))
             {
-                string typeName = ptype.Replace("[]", "");
-                sb.Append($@"
-{prefix}            var temp_{pname} = new List<{typeName}>();
-{prefix}            foreach (XmlNode node in doc.SelectNodes(""{pname}""))
-{prefix}            {{
-{prefix}                if({typeName}.TryParse(node.InnerText, out {typeName} item_{i})) {{
-{prefix}                    temp_{pname}.Add(item_{i++});
-{prefix}                }} else {{
-{prefix}                    throw new Exception(""Invalid Property Type"");
-{prefix}                }}
-{prefix}            }}
-{prefix}            result.{pname} = temp_{pname}.ToArray();
-                ");
+                i = EmitListParser(name, sb, prefix, i, ptype, pname);
             }
             else if (isObject(ptype))
             {
-                sb.Append($@"
-{prefix}            if({ptype}.TryParse(doc.SelectSingleNode(""{pname}"").InnerText, out {ptype} item_{i})) {{
-{prefix}                result.{pname} = item_{i++};
-{prefix}            }} else {{
-{prefix}                throw new Exception(""Invalid Property Type"");
-{prefix}            }}
-                ");
+                i = EmitObjectParser(name, sb, prefix, i, ptype, pname);
             }
             else
             {
-                if(ptype == nameof(String)) {
-                    sb.Append($@"
-{prefix}            result.{pname} = doc.SelectSingleNode(""{pname}"").InnerText;
-                    ");
-                } else 
-                {
-                    sb.Append($@"
-{prefix}            if({ptype}.TryParse(doc.SelectSingleNode(""{pname}"").InnerText, out {ptype} item_{i})) {{
+                if(!isAttr) {
+                    if(ptype == nameof(String)) {
+                        sb.Append($@"
+{prefix}            result.{pname} = doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").InnerText;
+                        ");
+                    } else 
+                    {
+                        sb.Append($@"
+{prefix}            if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").InnerText, out {ptype} item_{i})) {{
 {prefix}                result.{pname} = item_{i++};
 {prefix}            }} else {{
 {prefix}                throw new Exception(""Invalid Property Type"");
 {prefix}            }}
-                    ");
+
+                        ");
+                    }
+                }
+                else {
+                    if(ptype == nameof(String)) {
+                        sb.Append($@"
+{prefix}            result.{pname} = doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}"").Attributes[""{pname}""].InnerText;
+                        ");
+                    } else 
+                    {
+                        sb.Append($@"
+{prefix}            if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}"").Attributes[""{pname}""].InnerText, out {ptype} item_{i})) {{
+{prefix}                result.{pname} = item_{i++};
+{prefix}            }} else {{
+{prefix}                throw new Exception(""Invalid Property Type"");
+{prefix}            }}
+
+                        ");
+                    }
                 }
             }
         }
@@ -114,8 +118,81 @@ public class TypeInstantiator
         );
 
         return sb.ToString();
+
+        int EmitListParser(string name, StringBuilder sb, string prefix, int j, string ptype, string pname)
+        {
+            int i = 0;
+            string typeName = ptype.Substring(0, ptype.Length - 2);
+            sb.Append($@"
+{prefix}            var temp_{i + j} = new List<{typeName}>();");
+            if (!isList(typeName))
+            {
+                sb.Append($@"
+{prefix}            foreach (XmlElement node_{i + j} in node_{i + j - 1}.ChildNodes)
+{prefix}            {{");
+                sb.Append($@"
+{prefix}                if({typeName}.TryParse(node_{i + j}.{(isPrimitiveType(typeName) ? "InnerXml" : "OuterXml")}, out {typeName} item_{i + j})) {{");
+                sb.Append($@"
+{prefix}                    temp_{i + j}.Add(item_{j + i});
+{prefix}                }} else {{
+{prefix}                    throw new Exception(""Invalid Property Type"");
+{prefix}                }}
+{prefix}            }}");
+                sb.Append($@"
+{prefix}            temp_{i + j - 1}.Add(temp_{i + j}.ToArray());
+                    ");
+            }
+            else
+            {
+                if(i == 0) {
+                    sb.Append($@"
+{prefix}            foreach (XmlElement node_{i + j} in doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").ChildNodes)
+{prefix}            {{");
+                } else {
+                    sb.Append($@"
+{prefix}            foreach (XmlElement node_{i + j} in node_{i + j - 1}.ChildNodes)
+{prefix}            {{");
+                }
+                typeName = ptype.Substring(0, ptype.Length - 2);
+                EmitListParser(name, sb, $"{prefix}\t", i+1, typeName, pname);
+                sb.Append($@"
+{prefix}            }}");
+                if(i > 0)
+                    sb.Append($@"
+{prefix}            temp_{i + j - 2}.Add(temp_{i + j - 1}.ToArray());
+                    ");
+                else
+                    sb.Append($@"
+{prefix}            result.{pname} = temp_{i + j}.ToArray();
+                    ");
+            }
+
+            return i + j;
+        }
+
+        int EmitObjectParser(string name, StringBuilder sb, string prefix, int j, string ptype, string pname)
+        {
+            int i = 0;
+            if (isPrimitiveType(ptype))
+            {
+                sb.Append($@"
+{prefix}                if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").OuterXml, out {ptype} item_{i + j})) {{");
+            }
+            else
+            {
+                sb.Append($@"
+{prefix}                if({ptype}.TryParse(doc.SelectSingleNode($""{{(sourceProperty ?? ""{name}"")}}/{pname}"").OuterXml, out {ptype} item_{i + j}, ""{pname}"")) {{");
+            }
+            sb.Append($@"
+{prefix}                result.{pname} = item_{j + i++};
+{prefix}            }} else {{
+{prefix}                throw new Exception(""Invalid Property Type"");
+{prefix}            }}
+                ");
+            return i + j;
+        }
     }
-    public string EmitForm(string name, IEnumerable<(string type, string name)> props, bool IsTarget = false)
+    public string EmitForm(string name, IEnumerable<(string type, string name, bool isAttribute)> props, bool IsTarget = false)
     {
         var sb = new StringBuilder();
         sb.Append("{\n");
@@ -149,7 +226,7 @@ public class TypeInstantiator
     private Dictionary<int, string> emmited_types = new(); // hashform => typename
     private Dictionary<string, string> type_impl = new(); // typename => codeform
     private Dictionary<string, string> type_parser = new(); // typename => codeform
-    string AddTypeToEmitionTargets(ref string name, bool properType, List<(string type, string name)> properties)
+    string AddTypeToEmitionTargets(ref string name, bool properType, List<(string type, string name, bool isAttribute)> properties)
     {
         string typename(string name, int i) => $"{name}{i}";
         var recordForm = EmitForm(name, properties, properType);
@@ -184,12 +261,12 @@ public class TypeInstantiator
     }
     string GetObjectType(XmlNode obj, string name, bool properType = false)
     {
-        List<(string type, string name)> properties = new();
+        List<(string type, string name, bool isAttribute)> properties = new();
         foreach (XmlNode node in obj.ChildNodes)
         {
             var prop_name = node.Name;
             var prop_type = GetPropertyKind(node, $"{prop_name}_T");
-            properties.Add((prop_type, prop_name));
+            properties.Add((prop_type, prop_name, false));
         }
         if (obj.Attributes is not null)
         {
@@ -197,7 +274,7 @@ public class TypeInstantiator
             {
                 var prop_name = node.Name;
                 var prop_type = GetValueType(node.InnerText);
-                properties.Add((prop_type, prop_name));
+                properties.Add((prop_type, prop_name, true));
             }
         }
 
@@ -234,15 +311,15 @@ public class TypeInstantiator
                     var mainType = GetEnumerableType(value, $"{first.Name}_T");
                     if (value.Attributes.Count == 0)
                         return mainType;
-                    List<(string type, string name)> properties = new();
-                    properties.Add((mainType, first.Name));
+                    List<(string type, string name, bool isAttribute)> properties = new();
+                    properties.Add((mainType, first.Name, false));
                     if (value.Attributes is not null)
                     {
                         foreach (XmlAttribute node in value.Attributes)
                         {
                             var prop_name = node.Name;
                             var prop_type = GetValueType(node.InnerText);
-                            properties.Add((prop_type, prop_name));
+                            properties.Add((prop_type, prop_name, true));
                         }
                     }
                     AddTypeToEmitionTargets(ref name, false, properties);
