@@ -85,7 +85,7 @@ Usage :
 Generated (without parsers): 
 * Xml Case : 
 ```csharp
-public record PersonOfInterest {
+public record PersonOfInterest_T {
 	public record Value_T {
 		public Decimal Estimated { get; set; }
 		public Decimal Actual { get; set; }
@@ -96,21 +96,17 @@ public record PersonOfInterest {
 		public String Title { get; set; }
 	}
 	
-	public record PersonOfInterest_T {
-		public Project_T[] Projects { get; set; }
-		public Decimal[] Keys { get; set; }
-		public Projects_T CurrentProject { get; set; }
-		public String Name { get; set; }
-		public Decimal Age { get; set; }
-	}
-	
-	public PersonOfInterest_T PersonOfInterest { get; set; }
+	public Project_T[] Projects { get; set; }
+	public Decimal[] Keys { get; set; }
+	public Projects_T CurrentProject { get; set; }
+	public String Name { get; set; }
+	public Decimal Age { get; set; }
 }
 ```
 
 * Json Case : 
 ```csharp
-public record PersonOfInterest {
+public record PersonOfInterest_T {
 	public record Value_T {
 		public String Estimated { get; set; }
 		public String Actual { get; set; }
