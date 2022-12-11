@@ -3,7 +3,7 @@ A prototype remake of FSharp.TypeProvider in CSharp
 
 Usage : 
 ```csharp
-[EmitType][Json] private static string PersonOfInterest1 { get; } = @"{ 
+    [EmitType][Json] private static string PersonOfInterest1 { get; } = @"{ 
             ""Name"" : ""John Doe"", 
             ""Age"" : 23, 
             ""Projects"" : [
