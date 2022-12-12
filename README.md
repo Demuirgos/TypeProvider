@@ -98,7 +98,7 @@ public record PersonOfInterest_T {
 	
 	public Project_T[] Projects { get; set; }
 	public Decimal[] Keys { get; set; }
-	public Projects_T CurrentProject { get; set; }
+	public Project_T CurrentProject { get; set; }
 	public String Name { get; set; }
 	public Decimal Age { get; set; }
 }
