@@ -57,7 +57,7 @@ public class TypeInstantiator : ITypeEmitter
                     } else 
                     {
                         sb.Append($@"
-{prefix}            if({ptype}.TryParse(doc..FirstChild.SelectSingleNode($""{pname}"").InnerText, out {ptype} item_{pname}{i})) {{
+{prefix}            if({ptype}.TryParse(doc.FirstChild.SelectSingleNode($""{pname}"").InnerText, out {ptype} item_{pname}{i})) {{
 {prefix}                result.{pname} = item_{pname}{i++};
 {prefix}            }} else {{
 {prefix}                throw new Exception(""Invalid Property Type"");
@@ -114,14 +114,20 @@ public class TypeInstantiator : ITypeEmitter
 
             if (!isList(typeName))
             {
-                sb.Append($@"
+                if(typeName == nameof(String)) {
+                    sb.Append($@"
+{prefix}                temp_{pname}{i + j}.Add(node_{i + j}.InnerText);
+                    }}");
+                } else {
+                    sb.Append($@"
 {prefix}                if({typeName}.TryParse(node_{i + j}.{(isPrimitiveType(typeName) ? "InnerXml" : "OuterXml")}, out {typeName} item_{pname}{i + j})) {{");
-                sb.Append($@"
+                    sb.Append($@"
 {prefix}                    temp_{pname}{i + j}.Add(item_{pname}{j + i});
 {prefix}                }} else {{
 {prefix}                    throw new Exception(""Invalid Property Type"");
 {prefix}                }}
 {prefix}            }}");
+                }
             }
             else
             {
@@ -326,7 +332,7 @@ public class TypeInstantiator : ITypeEmitter
         } else if(Boolean.TryParse(kind, out _)) {
             return nameof(Boolean);
         } else if(DateTime.TryParse(kind, out _)) {
-            return nameof(Boolean);
+            return nameof(DateTime);
         } else if(String.IsNullOrEmpty(kind)) {
             return nameof(Object);
         } else return nameof(String);

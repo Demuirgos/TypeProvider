@@ -57,22 +57,22 @@ public class TypeInstantiator : ITypeEmitter
 ");
 
         sb.Append($@"
-public static IEnumerable<{name}> ParseTable(string csvTable, bool hasHeader) {{
-    byte[] byteArray = Encoding.UTF8.GetBytes(csvTable);
-    MemoryStream stream = new MemoryStream(byteArray);
-    StreamReader reader = new StreamReader(stream);
+    public static IEnumerable<{name}> ParseTable(string csvTable, bool hasHeader) {{
+        byte[] byteArray = Encoding.UTF8.GetBytes(csvTable);
+        MemoryStream stream = new MemoryStream(byteArray);
+        StreamReader reader = new StreamReader(stream);
 
-    string line = reader.ReadLine();
-    while (line != null && String.IsNullOrWhiteSpace(line))
-           line = reader.ReadLine(); 
+        string line = reader.ReadLine();
+        while (line != null && String.IsNullOrWhiteSpace(line))
+               line = reader.ReadLine(); 
 
-    if(hasHeader) line = reader.ReadLine();
-    do {{
-        if(TryParse(line, out var result))
-            yield return result;
-        else throw new Exception(""Invalid csv line"");
-    }} while((line = reader.ReadLine()) != null);
-}}
+        if(hasHeader) line = reader.ReadLine();
+        do {{
+            if(TryParse(line, out var result))
+                yield return result;
+            else throw new Exception(""Invalid csv line"");
+        }} while((line = reader.ReadLine()) != null);
+    }}
         ");
 
         sb.Append($"\tpublic override string ToString() => JsonSerializer.Serialize<{name}>(this);\n");

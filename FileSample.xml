@@ -1,0 +1,7 @@
+<PersonOfInterest Name="John Doe" Age="23">
+    <DateOfBirth>1999-07-23</DateOfBirth>
+    <Nationalities> 
+        <Nationality>Moroccan</Nationality>
+        <Nationality>French</Nationality>
+    </Nationalities>
+</PersonOfInterest>
