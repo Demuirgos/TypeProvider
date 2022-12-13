@@ -22,3 +22,8 @@ public class CsvAttribute : System.Attribute
 public class JsonAttribute : System.Attribute
 {
 }
+
+[System.AttributeUsage(System.AttributeTargets.Property)]
+public class FromUriAttribute : System.Attribute
+{
+}

@@ -27,7 +27,7 @@ public class TypesGenerator : ISourceGenerator
             .Select(propDef =>
             {
                 var semanticModel = context.GetSemanticModel(propDef.SyntaxTree);
-                (string name, string emitType, string sample) result = (String.Empty, String.Empty, String.Empty);
+                (string name, string emitType, bool fromFile, string sample) result = (String.Empty, String.Empty, false, String.Empty);
                 foreach (var attr in propDef.AttributeLists.SelectMany(x => x.Attributes))
                 {
                     var attrName = attr.Name.ToString();
@@ -45,15 +45,7 @@ public class TypesGenerator : ISourceGenerator
                         }
 
                         result.name = $"{propDef.Identifier.Value}_T";
-                        bool fromFile = attr.ArgumentList?.Arguments.Count > 0;
-                        if (fromFile)
-                        {
-                            var path = semanticModel.GetConstantValue(attr.ArgumentList.Arguments.Single().Expression).ToString();
-                            result.sample = File.ReadAllText(path);
-                        } else
-                        {
-                            result.sample = semanticModel.GetConstantValue(propDef.Initializer.Value).ToString();
-                        }
+                        result.sample = semanticModel.GetConstantValue(propDef.Initializer.Value).ToString();
                     } 
 
                     if( attrName == nameof(XmlAttribute).Replace("Attribute", String.Empty) ||
@@ -61,14 +53,44 @@ public class TypesGenerator : ISourceGenerator
                         attrName == nameof(CsvAttribute).Replace("Attribute", String.Empty)) {
                         result.emitType = attrName.Replace("Attribute", String.Empty);
                     }
+
+                    if( attrName == nameof(FromUriAttribute).Replace("Attribute", String.Empty)) {
+                        result.fromFile = true;
+                    }
                 }
+
+                
+                if (result.fromFile)
+                {
+                    bool isUrl = Uri.TryCreate(result.sample, UriKind.Absolute, out var uriResult) 
+                        && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
+
+                    if (isUrl)
+                    {
+                        using var client = new System.Net.WebClient();
+                        result.sample = client.DownloadString(result.sample);
+                    } else {
+                        string path = result.sample;
+                        if(result.sample[0] == '.') {
+                            path = Path.Combine(Environment.CurrentDirectory, result.sample);
+                        }
+
+                        if (!File.Exists(path))
+                        {
+                            throw new FileNotFoundException();
+                        } 
+                        else {
+                            result.sample = File.ReadAllText(path);
+                        }
+                    }
+                } 
 
                 if (result.emitType == String.Empty)
                 {
                     throw new Exception("Missing Type Emission Target");
                 }
 
-                return result;
+                return (result.name, result.emitType, result.sample);
             })
             .Where(result => !String.IsNullOrWhiteSpace(result.name) 
                                                                         && !String.IsNullOrWhiteSpace(result.emitType) 
