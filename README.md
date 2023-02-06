@@ -1,6 +1,8 @@
 # TypeProvider.General
 A prototype remake of FSharp.TypeProvider in CSharp
 
+Project Nuget : ``dotnet add package Csharp.TypeProvider --version 0.1.0``
+
 Usage : 
 ```csharp
 [EmitType, Csv] private static string Grades { get; } = @"
